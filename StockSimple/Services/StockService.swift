@@ -40,7 +40,7 @@ class StockService {
 
     // MARK: - Fetch Stocks (Alpha Vantage API - 무료 500 requests/day)
 
-    private let apiKey = "demo" // MVP용 - 실제 키 발급: https://www.alphavantage.co/support/#api-key
+    private let apiKey = "55G8PIFJ7ACSVFZU" // MVP용 - 실제 키 발급: https://www.alphavantage.co/support/#api-key
 
     func fetchStocks() async throws -> [Stock] {
         // Alpha Vantage는 Rate Limit이 있으므로 순차 처리 (5 calls/minute)
@@ -74,6 +74,18 @@ class StockService {
                   (200...299).contains(httpResponse.statusCode) else {
                 print("❌ HTTP Error for \(symbol)")
                 return nil
+            }
+
+            // Rate Limit 체크 (API 응답에 "Note" 또는 "Information" 포함)
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let note = json["Note"] as? String {
+                    print("⚠️ Rate Limit: \(note)")
+                    return nil
+                }
+                if let info = json["Information"] as? String {
+                    print("⚠️ API Limit: \(info)")
+                    return nil
+                }
             }
 
             let decoder = JSONDecoder()

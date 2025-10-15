@@ -31,8 +31,9 @@ class StockViewModel: ObservableObject {
             await fetchStocks()
         }
 
-        // 30초마다 자동 갱신
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // 5분마다 자동 갱신 (Alpha Vantage Rate Limit: 분당 5회 제한)
+        // 15개 주식 × 0.3초 = 4.5초 소요 → 최소 5분 간격 필요
+        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task {
                 await self?.fetchStocks()
             }
@@ -58,8 +59,11 @@ class StockViewModel: ObservableObject {
 
                 // 캐시 저장
                 service.cacheStocks(fetchedStocks)
+                errorMessage = nil
             } else {
-                errorMessage = "주식 데이터를 가져올 수 없습니다."
+                // Rate Limit 또는 네트워크 오류 - 캐시 유지
+                errorMessage = "API 제한 도달. 캐시 데이터 표시 중 (5분 후 재시도)"
+                print("⚠️ No stocks fetched - keeping cache")
             }
 
             isLoading = false

@@ -78,9 +78,16 @@ Xcode에서 Target → Info 탭에서 다음 설정 추가:
 
 ### 데이터 갱신 주기
 - 앱 실행 시: 즉시 (15개 주식 순차 로딩, ~5초)
-- 자동 갱신: 30초마다
-- 수동 갱신: Pull to refresh
+- 자동 갱신: 5분마다 (Rate Limit 방지)
+- 수동 갱신: Pull to refresh (5분 간격 권장)
 - Rate Limit 방지: 각 요청 사이 0.3초 대기
+
+### Rate Limit 관리
+- **분당 제한**: 5 requests
+- **일일 제한**: 500 requests
+- **15개 주식**: ~4.5초 소요
+- **권장 갱신**: 5분 간격
+- **Rate Limit 시**: 캐시 데이터 표시
 
 ### API 키 발급 (선택)
 1. https://www.alphavantage.co/support/#api-key 방문
