@@ -9,13 +9,24 @@ import Foundation
 import SwiftUI
 
 struct Stock: Identifiable, Codable {
-    let id = UUID()
+    let id: UUID
     let symbol: String          // "AAPL"
     let name: String            // "Apple Inc."
     let currentPrice: Double    // 178.25
     let changePercent: Double   // 2.34
     let previousClose: Double   // 174.20
     let interpretation: String  // "애플 신제품 기대감으로 상승 중"
+
+    // Codable을 위한 초기화
+    init(symbol: String, name: String, currentPrice: Double, changePercent: Double, previousClose: Double, interpretation: String) {
+        self.id = UUID()
+        self.symbol = symbol
+        self.name = name
+        self.currentPrice = currentPrice
+        self.changePercent = changePercent
+        self.previousClose = previousClose
+        self.interpretation = interpretation
+    }
 
     // MARK: - Computed Properties
 

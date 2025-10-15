@@ -12,8 +12,6 @@ class StockService {
 
     private init() {}
 
-    private let apiKey = "YOUR_ALPHA_VANTAGE_API_KEY" // MVP에서는 Mock 데이터 사용
-
     // MARK: - 15개 주식 심볼 리스트
 
     private let stockSymbols = [
@@ -40,32 +38,78 @@ class StockService {
         "QQQ": "NASDAQ-100 ETF"
     ]
 
-    // MARK: - Fetch Stocks (MVP: Mock Data)
+    // MARK: - Fetch Stocks (실제 Yahoo Finance API)
 
     func fetchStocks() async throws -> [Stock] {
-        // MVP: Mock 데이터 반환 (추후 Alpha Vantage API 연동)
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5초 대기 (네트워크 시뮬레이션)
+        // 모든 주식 병렬로 가져오기
+        return try await withThrowingTaskGroup(of: Stock?.self) { group in
+            for symbol in stockSymbols {
+                group.addTask {
+                    try await self.fetchSingleStock(symbol: symbol)
+                }
+            }
 
-        return generateMockStocks()
+            var stocks: [Stock] = []
+            for try await stock in group {
+                if let stock = stock {
+                    stocks.append(stock)
+                }
+            }
+
+            // 심볼 순서대로 정렬
+            return stocks.sorted { stock1, stock2 in
+                guard let index1 = stockSymbols.firstIndex(of: stock1.symbol),
+                      let index2 = stockSymbols.firstIndex(of: stock2.symbol) else {
+                    return false
+                }
+                return index1 < index2
+            }
+        }
     }
 
-    // MARK: - Mock Data Generator
+    // MARK: - Fetch Single Stock
 
-    private func generateMockStocks() -> [Stock] {
-        return stockSymbols.map { symbol in
-            let name = stockNames[symbol] ?? symbol
-            let basePrice = Double.random(in: 50...400)
-            let changePercent = Double.random(in: -5...5)
-            let previousClose = basePrice / (1 + changePercent / 100)
+    private func fetchSingleStock(symbol: String) async throws -> Stock? {
+        let urlString = "https://query1.finance.yahoo.com/v8/finance/chart/\(symbol)?interval=1d&range=5d"
+
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid URL for \(symbol)")
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                print("❌ HTTP Error for \(symbol)")
+                return nil
+            }
+
+            let decoder = JSONDecoder()
+            let result = try decoder.decode(YahooFinanceResponse.self, from: data)
+
+            guard let quote = result.chart.result.first,
+                  let meta = quote.meta,
+                  let currentPrice = meta.regularMarketPrice,
+                  let previousClose = meta.previousClose else {
+                print("❌ Missing data for \(symbol)")
+                return nil
+            }
+
+            let changePercent = ((currentPrice - previousClose) / previousClose) * 100
 
             return Stock(
                 symbol: symbol,
-                name: name,
-                currentPrice: basePrice,
+                name: stockNames[symbol] ?? symbol,
+                currentPrice: currentPrice,
                 changePercent: changePercent,
                 previousClose: previousClose,
                 interpretation: generateInterpretation(for: symbol, changePercent: changePercent)
             )
+        } catch {
+            print("❌ Error fetching \(symbol): \(error)")
+            return nil
         }
     }
 
@@ -154,14 +198,40 @@ class StockService {
         return options.randomElement() ?? "시장 상황에 따라 변동 중"
     }
 
-    // MARK: - Cache Management (추후 확장)
+    // MARK: - Cache Management
+
+    private let cacheKey = "cachedStocks"
+    private let lastUpdateKey = "lastStockUpdate"
 
     func loadCachedStocks() -> [Stock]? {
-        // UserDefaults에서 캐시된 데이터 로드 (추후 구현)
-        return nil
+        guard let data = UserDefaults.standard.data(forKey: cacheKey) else {
+            return nil
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            let stocks = try decoder.decode([Stock].self, from: data)
+            print("✅ Loaded \(stocks.count) stocks from cache")
+            return stocks
+        } catch {
+            print("❌ Failed to decode cached stocks: \(error)")
+            return nil
+        }
     }
 
     func cacheStocks(_ stocks: [Stock]) {
-        // UserDefaults에 캐시 저장 (추후 구현)
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(stocks)
+            UserDefaults.standard.set(data, forKey: cacheKey)
+            UserDefaults.standard.set(Date(), forKey: lastUpdateKey)
+            print("✅ Cached \(stocks.count) stocks")
+        } catch {
+            print("❌ Failed to cache stocks: \(error)")
+        }
+    }
+
+    func getLastUpdateTime() -> Date? {
+        return UserDefaults.standard.object(forKey: lastUpdateKey) as? Date
     }
 }

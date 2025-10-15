@@ -50,11 +50,21 @@ class StockViewModel: ObservableObject {
 
         do {
             let fetchedStocks = try await service.fetchStocks()
-            stocks = fetchedStocks
-            lastUpdate = Date()
+
+            // 빈 배열이 아닌 경우만 업데이트
+            if !fetchedStocks.isEmpty {
+                stocks = fetchedStocks
+                lastUpdate = Date()
+
+                // 캐시 저장
+                service.cacheStocks(fetchedStocks)
+            } else {
+                errorMessage = "주식 데이터를 가져올 수 없습니다."
+            }
+
             isLoading = false
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "네트워크 오류: \(error.localizedDescription)"
             isLoading = false
 
             // 에러 발생 시 캐시된 데이터라도 보여주기
@@ -69,6 +79,7 @@ class StockViewModel: ObservableObject {
     private func loadCachedData() {
         if let cached = service.loadCachedStocks() {
             stocks = cached
+            lastUpdate = service.getLastUpdateTime()
         }
     }
 
