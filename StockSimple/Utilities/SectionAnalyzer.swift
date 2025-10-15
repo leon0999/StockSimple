@@ -18,6 +18,7 @@ struct AnalysisSection: Identifiable {
     let changePercent: Double
     let explanation: String
     let technicalIndicators: TechnicalIndicators
+    let relatedNews: [NewsArticle] // 🔥 뉴스 기반 분석
 }
 
 struct TechnicalIndicators {
@@ -43,27 +44,27 @@ enum SectionStrength {
 
 class SectionAnalyzer {
 
-    // MARK: - Main Analysis
+    // MARK: - Main Analysis (뉴스 기반)
 
-    func analyze(quotes: [DailyQuote]) -> [AnalysisSection] {
+    func analyze(quotes: [DailyQuote], news: [NewsArticle]) -> [AnalysisSection] {
         guard quotes.count >= 7 else { return [] }
 
         var sections: [AnalysisSection] = []
 
         // 1. 급등 구간 감지 (연속 상승)
-        sections.append(contentsOf: detectSurges(quotes))
+        sections.append(contentsOf: detectSurges(quotes, news: news))
 
         // 2. 급락 구간 감지 (연속 하락)
-        sections.append(contentsOf: detectCrashes(quotes))
+        sections.append(contentsOf: detectCrashes(quotes, news: news))
 
         // 3. 조정 구간 감지 (상승 후 소폭 하락)
-        sections.append(contentsOf: detectConsolidations(quotes))
+        sections.append(contentsOf: detectConsolidations(quotes, news: news))
 
         // 4. 박스권 구간 감지 (횡보)
-        sections.append(contentsOf: detectRanges(quotes))
+        sections.append(contentsOf: detectRanges(quotes, news: news))
 
         // 5. 돌파 구간 감지 (박스권 이탈)
-        sections.append(contentsOf: detectBreakouts(quotes))
+        sections.append(contentsOf: detectBreakouts(quotes, news: news))
 
         // 최신순 정렬
         return sections.sorted { $0.endDate > $1.endDate }
@@ -71,7 +72,7 @@ class SectionAnalyzer {
 
     // MARK: - Surge Detection (급등)
 
-    private func detectSurges(_ quotes: [DailyQuote]) -> [AnalysisSection] {
+    private func detectSurges(_ quotes: [DailyQuote], news: [NewsArticle]) -> [AnalysisSection] {
         var sections: [AnalysisSection] = []
         var consecutiveUps = 0
         var startIndex = 0
@@ -85,8 +86,15 @@ class SectionAnalyzer {
 
                 // 3일 연속 상승
                 if consecutiveUps >= 3 {
+                    let sectionQuotes = Array(quotes[startIndex...index])
+                    let relatedNews = findRelatedNews(
+                        for: sectionQuotes,
+                        in: news,
+                        sentiment: .positive
+                    )
                     let section = createSurgeSection(
-                        quotes: Array(quotes[startIndex...index])
+                        quotes: sectionQuotes,
+                        news: relatedNews
                     )
                     sections.append(section)
                     consecutiveUps = 0
@@ -101,7 +109,7 @@ class SectionAnalyzer {
 
     // MARK: - Crash Detection (급락)
 
-    private func detectCrashes(_ quotes: [DailyQuote]) -> [AnalysisSection] {
+    private func detectCrashes(_ quotes: [DailyQuote], news: [NewsArticle]) -> [AnalysisSection] {
         var sections: [AnalysisSection] = []
         var consecutiveDowns = 0
         var startIndex = 0
@@ -115,8 +123,15 @@ class SectionAnalyzer {
 
                 // 3일 연속 하락
                 if consecutiveDowns >= 3 {
+                    let sectionQuotes = Array(quotes[startIndex...index])
+                    let relatedNews = findRelatedNews(
+                        for: sectionQuotes,
+                        in: news,
+                        sentiment: .negative
+                    )
                     let section = createCrashSection(
-                        quotes: Array(quotes[startIndex...index])
+                        quotes: sectionQuotes,
+                        news: relatedNews
                     )
                     sections.append(section)
                     consecutiveDowns = 0
@@ -131,7 +146,7 @@ class SectionAnalyzer {
 
     // MARK: - Consolidation Detection (조정)
 
-    private func detectConsolidations(_ quotes: [DailyQuote]) -> [AnalysisSection] {
+    private func detectConsolidations(_ quotes: [DailyQuote], news: [NewsArticle]) -> [AnalysisSection] {
         var sections: [AnalysisSection] = []
 
         for i in stride(from: 0, to: quotes.count - 6, by: 3) {
@@ -148,7 +163,12 @@ class SectionAnalyzer {
 
             // 전반부 상승(+3% 이상), 후반부 하락(-2% 이상)
             if firstChange > 3.0 && secondChange < -2.0 {
-                let section = createConsolidationSection(quotes: window)
+                let relatedNews = findRelatedNews(
+                    for: window,
+                    in: news,
+                    sentiment: .neutral
+                )
+                let section = createConsolidationSection(quotes: window, news: relatedNews)
                 sections.append(section)
             }
         }
@@ -158,7 +178,7 @@ class SectionAnalyzer {
 
     // MARK: - Range Detection (박스권)
 
-    private func detectRanges(_ quotes: [DailyQuote]) -> [AnalysisSection] {
+    private func detectRanges(_ quotes: [DailyQuote], news: [NewsArticle]) -> [AnalysisSection] {
         var sections: [AnalysisSection] = []
 
         // 7일 단위로 분석
@@ -174,9 +194,15 @@ class SectionAnalyzer {
 
             // 변동폭이 3% 미만이면 박스권
             if volatility < 3.0 {
+                let relatedNews = findRelatedNews(
+                    for: window,
+                    in: news,
+                    sentiment: .neutral
+                )
                 let section = createRangeSection(
                     quotes: window,
-                    volatility: volatility
+                    volatility: volatility,
+                    news: relatedNews
                 )
                 sections.append(section)
             }
@@ -187,7 +213,7 @@ class SectionAnalyzer {
 
     // MARK: - Breakout Detection (돌파)
 
-    private func detectBreakouts(_ quotes: [DailyQuote]) -> [AnalysisSection] {
+    private func detectBreakouts(_ quotes: [DailyQuote], news: [NewsArticle]) -> [AnalysisSection] {
         var sections: [AnalysisSection] = []
 
         for i in stride(from: 0, to: quotes.count - 9, by: 5) {
@@ -203,9 +229,16 @@ class SectionAnalyzer {
 
             // 박스권(변동성 < 3%) 후 급등(+5% 이상)
             if boxVolatility < 3.0 && abs(breakoutChange) > 5.0 {
+                let sentiment: NewsSentiment = breakoutChange > 0 ? .positive : .negative
+                let relatedNews = findRelatedNews(
+                    for: breakoutPeriod,
+                    in: news,
+                    sentiment: sentiment
+                )
                 let section = createBreakoutSection(
                     quotes: breakoutPeriod,
-                    direction: breakoutChange > 0 ? "상승" : "하락"
+                    direction: breakoutChange > 0 ? "상승" : "하락",
+                    news: relatedNews
                 )
                 sections.append(section)
             }
@@ -214,9 +247,33 @@ class SectionAnalyzer {
         return sections
     }
 
+    // MARK: - News Matching (핵심!)
+
+    private func findRelatedNews(for quotes: [DailyQuote], in allNews: [NewsArticle], sentiment: NewsSentiment?) -> [NewsArticle] {
+        guard let startDate = quotes.last?.date,
+              let endDate = quotes.first?.date else {
+            return []
+        }
+
+        // 구간 날짜 범위 내 뉴스 필터링
+        let filtered = allNews.filter { article in
+            let articleDate = article.publishedAt
+            let isInRange = articleDate >= startDate && articleDate <= endDate
+
+            // Sentiment 매칭 (옵션)
+            let sentimentMatch = sentiment == nil || article.sentiment == sentiment
+
+            return isInRange && sentimentMatch
+        }
+
+        // Relevance 점수순 정렬, 상위 3개만
+        let sorted = filtered.sorted { $0.relevanceScore > $1.relevanceScore }
+        return Array(sorted.prefix(3))
+    }
+
     // MARK: - Section Creators
 
-    private func createSurgeSection(quotes: [DailyQuote]) -> AnalysisSection {
+    private func createSurgeSection(quotes: [DailyQuote], news: [NewsArticle]) -> AnalysisSection {
         let startPrice = quotes.first?.close ?? 0
         let endPrice = quotes.last?.close ?? 0
         let changePercent = ((endPrice - startPrice) / startPrice) * 100
@@ -233,10 +290,12 @@ class SectionAnalyzer {
             volume: volume
         )
 
-        let explanation = generateSurgeExplanation(
+        let explanation = generateNewsBasedExplanation(
+            type: .surge,
             days: quotes.count,
             changePercent: changePercent,
-            indicators: indicators
+            indicators: indicators,
+            news: news
         )
 
         return AnalysisSection(
@@ -246,11 +305,12 @@ class SectionAnalyzer {
             days: quotes.count,
             changePercent: changePercent,
             explanation: explanation,
-            technicalIndicators: indicators
+            technicalIndicators: indicators,
+            relatedNews: news
         )
     }
 
-    private func createCrashSection(quotes: [DailyQuote]) -> AnalysisSection {
+    private func createCrashSection(quotes: [DailyQuote], news: [NewsArticle]) -> AnalysisSection {
         let startPrice = quotes.first?.close ?? 0
         let endPrice = quotes.last?.close ?? 0
         let changePercent = ((endPrice - startPrice) / startPrice) * 100
@@ -267,10 +327,12 @@ class SectionAnalyzer {
             volume: volume
         )
 
-        let explanation = generateCrashExplanation(
+        let explanation = generateNewsBasedExplanation(
+            type: .crash,
             days: quotes.count,
             changePercent: changePercent,
-            indicators: indicators
+            indicators: indicators,
+            news: news
         )
 
         return AnalysisSection(
@@ -280,11 +342,12 @@ class SectionAnalyzer {
             days: quotes.count,
             changePercent: changePercent,
             explanation: explanation,
-            technicalIndicators: indicators
+            technicalIndicators: indicators,
+            relatedNews: news
         )
     }
 
-    private func createConsolidationSection(quotes: [DailyQuote]) -> AnalysisSection {
+    private func createConsolidationSection(quotes: [DailyQuote], news: [NewsArticle]) -> AnalysisSection {
         let startPrice = quotes.first?.close ?? 0
         let endPrice = quotes.last?.close ?? 0
         let changePercent = ((endPrice - startPrice) / startPrice) * 100
@@ -301,10 +364,12 @@ class SectionAnalyzer {
             volume: volume
         )
 
-        let explanation = generateConsolidationExplanation(
+        let explanation = generateNewsBasedExplanation(
+            type: .consolidation,
             days: quotes.count,
             changePercent: changePercent,
-            indicators: indicators
+            indicators: indicators,
+            news: news
         )
 
         return AnalysisSection(
@@ -314,11 +379,12 @@ class SectionAnalyzer {
             days: quotes.count,
             changePercent: changePercent,
             explanation: explanation,
-            technicalIndicators: indicators
+            technicalIndicators: indicators,
+            relatedNews: news
         )
     }
 
-    private func createRangeSection(quotes: [DailyQuote], volatility: Double) -> AnalysisSection {
+    private func createRangeSection(quotes: [DailyQuote], volatility: Double, news: [NewsArticle]) -> AnalysisSection {
         let indicators = TechnicalIndicators(
             volatility: volatility,
             momentum: 0.0,
@@ -326,10 +392,12 @@ class SectionAnalyzer {
             volume: evaluateVolume(quotes)
         )
 
-        let explanation = generateRangeExplanation(
+        let explanation = generateNewsBasedExplanation(
+            type: .range,
             days: quotes.count,
-            volatility: volatility,
-            indicators: indicators
+            changePercent: volatility,
+            indicators: indicators,
+            news: news
         )
 
         return AnalysisSection(
@@ -339,11 +407,12 @@ class SectionAnalyzer {
             days: quotes.count,
             changePercent: volatility,
             explanation: explanation,
-            technicalIndicators: indicators
+            technicalIndicators: indicators,
+            relatedNews: news
         )
     }
 
-    private func createBreakoutSection(quotes: [DailyQuote], direction: String) -> AnalysisSection {
+    private func createBreakoutSection(quotes: [DailyQuote], direction: String, news: [NewsArticle]) -> AnalysisSection {
         let startPrice = quotes.first?.close ?? 0
         let endPrice = quotes.last?.close ?? 0
         let changePercent = ((endPrice - startPrice) / startPrice) * 100
@@ -360,11 +429,12 @@ class SectionAnalyzer {
             volume: volume
         )
 
-        let explanation = generateBreakoutExplanation(
+        let explanation = generateNewsBasedExplanation(
+            type: .breakout,
             days: quotes.count,
             changePercent: changePercent,
-            direction: direction,
-            indicators: indicators
+            indicators: indicators,
+            news: news
         )
 
         return AnalysisSection(
@@ -374,7 +444,8 @@ class SectionAnalyzer {
             days: quotes.count,
             changePercent: changePercent,
             explanation: explanation,
-            technicalIndicators: indicators
+            technicalIndicators: indicators,
+            relatedNews: news
         )
     }
 
@@ -429,7 +500,46 @@ class SectionAnalyzer {
         }
     }
 
-    // MARK: - Professional Explanations
+    // MARK: - News-Based Professional Explanations (🔥 핵심!)
+
+    private func generateNewsBasedExplanation(
+        type: SectionType,
+        days: Int,
+        changePercent: Double,
+        indicators: TechnicalIndicators,
+        news: [NewsArticle]
+    ) -> String {
+        var explanation = ""
+
+        // 1. 기본 변동 정보
+        let changeText = String(format: "%.2f%%", abs(changePercent))
+        explanation += "\(days)일간 \(changeText) \(type == .surge ? "상승" : type == .crash ? "하락" : "변동")\n\n"
+
+        // 2. 뉴스 기반 원인 분석 (가장 중요!)
+        if !news.isEmpty {
+            explanation += "📰 주요 이슈:\n"
+            for (index, article) in news.enumerated() {
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "MM/dd"
+                let dateStr = dateFormatter.string(from: article.publishedAt)
+
+                explanation += "\(index + 1). [\(dateStr)] \(article.title)\n"
+                explanation += "   • \(article.source)\n"
+            }
+            explanation += "\n"
+        } else {
+            explanation += "💡 관련 뉴스가 감지되지 않았습니다.\n\n"
+        }
+
+        // 3. 기술적 분석
+        explanation += "📊 기술적 분석:\n"
+        explanation += "• 변동성: \(String(format: "%.1f%%", indicators.volatility))\n"
+        explanation += "• \(indicators.volume)\n"
+
+        return explanation
+    }
+
+    // MARK: - Legacy Explanations (제거 예정)
 
     private func generateSurgeExplanation(days: Int, changePercent: Double, indicators: TechnicalIndicators) -> String {
         let strengthText = indicators.strength == .strong ? "강력한" : indicators.strength == .moderate ? "중간 강도의" : "약한"

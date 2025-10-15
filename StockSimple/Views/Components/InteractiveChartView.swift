@@ -13,6 +13,7 @@ struct InteractiveChartView: View {
     @State private var selectedPoint: DailyQuote?
     @State private var selectedSection: AnalysisSection?
     @State private var touchLocation: CGPoint = .zero
+    @Binding var selectedArticleURL: URL? // 🔥 아티클 클릭
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -303,6 +304,53 @@ struct InteractiveChartView: View {
                 .foregroundColor(.primary)
                 .lineSpacing(6)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // 🔥 뉴스 아티클 링크
+            if !section.relatedNews.isEmpty {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("관련 뉴스 보기")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    ForEach(section.relatedNews) { article in
+                        Button(action: {
+                            if let url = URL(string: article.url) {
+                                selectedArticleURL = url
+                            }
+                        }) {
+                            HStack {
+                                Text(article.sentiment.emoji)
+                                    .font(.system(size: 14))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(article.title)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(2)
+
+                                    Text(article.source)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.blue)
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color(UIColor.tertiarySystemBackground))
+                            )
+                        }
+                    }
+                }
+            }
         }
         .padding()
         .background(
@@ -411,6 +459,7 @@ struct InteractiveChartView: View {
 #Preview {
     InteractiveChartView(
         quotes: [],
-        sections: []
+        sections: [],
+        selectedArticleURL: .constant(nil)
     )
 }

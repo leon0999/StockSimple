@@ -11,7 +11,9 @@ struct StockDetailView: View {
     let stock: Stock
     @State private var chartData: ChartData?
     @State private var analysisSections: [AnalysisSection] = []
+    @State private var newsArticles: [NewsArticle] = [] // 🔥 뉴스 데이터
     @State private var isLoading = false
+    @State private var selectedArticleURL: URL? // 아티클 클릭
 
     var body: some View {
         ScrollView {
@@ -24,12 +26,13 @@ struct StockDetailView: View {
 
                 // 인터랙티브 차트 + 구간 분석 통합
                 if isLoading {
-                    ProgressView("차트 로딩 중...")
+                    ProgressView("차트 및 뉴스 로딩 중...")
                         .frame(height: 300)
                 } else if let data = chartData, !analysisSections.isEmpty {
                     InteractiveChartView(
                         quotes: data.last30Days,
-                        sections: analysisSections
+                        sections: analysisSections,
+                        selectedArticleURL: $selectedArticleURL
                     )
                 } else {
                     Text("차트 데이터를 불러올 수 없습니다")
@@ -44,6 +47,9 @@ struct StockDetailView: View {
         }
         .navigationTitle(stock.symbol)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $selectedArticleURL) { url in
+            SafariView(url: url)
+        }
         .task {
             await loadData()
         }
@@ -155,25 +161,36 @@ struct StockDetailView: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Load Data
+    // MARK: - Load Data (뉴스 기반)
 
     private func loadData() async {
         isLoading = true
 
-        // 차트 데이터 로드
+        // 1. 차트 데이터 로드
         if let cached = StockService.shared.loadCachedChartData(symbol: stock.symbol), !cached.isExpired {
             chartData = cached
-            analyzeChartData(cached)
         } else {
             do {
                 if let data = try await StockService.shared.fetchChartData(symbol: stock.symbol) {
                     chartData = data
                     StockService.shared.cacheChartData(data)
-                    analyzeChartData(data)
                 }
             } catch {
                 print("❌ Failed to load chart data: \(error)")
             }
+        }
+
+        // 2. 뉴스 데이터 로드 (🔥 핵심!)
+        do {
+            newsArticles = try await NewsService.shared.fetchNews(for: stock.symbol, days: 30)
+            print("✅ Loaded \(newsArticles.count) news articles")
+        } catch {
+            print("❌ Failed to load news: \(error)")
+        }
+
+        // 3. 뉴스 기반 섹션 분석
+        if let data = chartData {
+            analyzeChartData(data)
         }
 
         isLoading = false
@@ -181,8 +198,27 @@ struct StockDetailView: View {
 
     private func analyzeChartData(_ data: ChartData) {
         let analyzer = SectionAnalyzer()
-        analysisSections = analyzer.analyze(quotes: data.last30Days)
+        analysisSections = analyzer.analyze(quotes: data.last30Days, news: newsArticles)
     }
+}
+
+// MARK: - SafariView (아티클 보기)
+
+import SafariServices
+
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        return SFSafariViewController(url: url)
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+}
+
+// URL을 Identifiable로 만들기
+extension URL: Identifiable {
+    public var id: String { absoluteString }
 }
 
 #Preview {
