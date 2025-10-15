@@ -12,52 +12,195 @@ class StockService {
 
     private init() {}
 
-    // MARK: - 15개 주식 심볼 리스트
+    // MARK: - 5개 핵심 주식 심볼 (100명 × 30일 대응)
 
     private let stockSymbols = [
-        "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-        "NVDA", "TSLA", "NFLX", "JPM", "V",
-        "KO", "DIS", "NKE", "SPY", "QQQ"
+        "AAPL",  // 애플 (빅테크 대표)
+        "MSFT",  // 마이크로소프트 (안정성)
+        "NVDA",  // 엔비디아 (AI 대장주)
+        "TSLA",  // 테슬라 (고변동성)
+        "SPY"    // S&P 500 ETF (시장 전체)
     ]
 
     private let stockNames: [String: String] = [
-        "AAPL": "Apple Inc.",
-        "MSFT": "Microsoft Corp.",
-        "GOOGL": "Alphabet Inc.",
-        "AMZN": "Amazon.com Inc.",
-        "META": "Meta Platforms",
-        "NVDA": "NVIDIA Corp.",
-        "TSLA": "Tesla Inc.",
-        "NFLX": "Netflix Inc.",
-        "JPM": "JPMorgan Chase",
-        "V": "Visa Inc.",
-        "KO": "Coca-Cola Co.",
-        "DIS": "Walt Disney Co.",
-        "NKE": "Nike Inc.",
-        "SPY": "S&P 500 ETF",
-        "QQQ": "NASDAQ-100 ETF"
+        "AAPL": "애플",
+        "MSFT": "마이크로소프트",
+        "NVDA": "엔비디아",
+        "TSLA": "테슬라",
+        "SPY": "S&P 500"
     ]
 
-    // MARK: - Fetch Stocks (Alpha Vantage API - 무료 500 requests/day)
+    // MARK: - Fetch Stocks (Alpha Vantage TIME_SERIES_DAILY)
 
-    private let apiKey = "55G8PIFJ7ACSVFZU" // MVP용 - 실제 키 발급: https://www.alphavantage.co/support/#api-key
+    private let apiKey = "55G8PIFJ7ACSVFZU"
 
     func fetchStocks() async throws -> [Stock] {
-        // Alpha Vantage는 Rate Limit이 있으므로 순차 처리 (5 calls/minute)
+        // 5개 주식 순차 처리
         var stocks: [Stock] = []
 
         for symbol in stockSymbols {
-            if let stock = try await fetchSingleStock(symbol: symbol) {
-                stocks.append(stock)
+            // 캐시 확인 (24시간)
+            if let cached = loadCachedChartData(symbol: symbol), !cached.isExpired {
+                print("✅ Using cache for \(symbol)")
+                if let stock = createStockFromCache(cached) {
+                    stocks.append(stock)
+                    continue
+                }
             }
-            // Rate Limit 방지: 0.3초 대기
-            try await Task.sleep(nanoseconds: 300_000_000)
+
+            // API 호출
+            if let chartData = try await fetchChartData(symbol: symbol) {
+                cacheChartData(chartData)
+                if let stock = createStockFromChartData(chartData) {
+                    stocks.append(stock)
+                }
+            }
+
+            // Rate Limit 방지: 1초 대기 (5 requests/minute)
+            try await Task.sleep(nanoseconds: 1_000_000_000)
         }
 
         return stocks
     }
 
-    // MARK: - Fetch Single Stock
+    // MARK: - Fetch Chart Data (100일 데이터)
+
+    func fetchChartData(symbol: String) async throws -> ChartData? {
+        let urlString = "https://www.alphavantage.co/query?" +
+                       "function=TIME_SERIES_DAILY&" +
+                       "symbol=\(symbol)&" +
+                       "outputsize=compact&" +
+                       "apikey=\(apiKey)"
+
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid URL for \(symbol)")
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                print("❌ HTTP Error for \(symbol)")
+                return nil
+            }
+
+            // Rate Limit 체크
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let note = json["Note"] as? String {
+                    print("⚠️ Rate Limit: \(note)")
+                    return nil
+                }
+            }
+
+            let decoder = JSONDecoder()
+            let result = try decoder.decode(TimeSeriesResponse.self, from: data)
+
+            guard let timeSeries = result.timeSeries else {
+                print("❌ No time series data for \(symbol)")
+                return nil
+            }
+
+            // DailyQuote 배열 생성
+            var quotes: [DailyQuote] = []
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+
+            for (dateString, data) in timeSeries {
+                guard let date = dateFormatter.date(from: dateString),
+                      let open = Double(data.open),
+                      let high = Double(data.high),
+                      let low = Double(data.low),
+                      let close = Double(data.close),
+                      let volume = Int(data.volume) else {
+                    continue
+                }
+
+                let quote = DailyQuote(
+                    date: date,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                    volume: volume
+                )
+                quotes.append(quote)
+            }
+
+            // 날짜순 정렬 (최신순)
+            quotes.sort { $0.date > $1.date }
+
+            let chartData = ChartData(
+                symbol: symbol,
+                quotes: quotes,
+                timestamp: Date()
+            )
+
+            print("✅ Loaded \(quotes.count) days for \(symbol)")
+            return chartData
+
+        } catch {
+            print("❌ Error fetching \(symbol): \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    private func createStockFromChartData(_ chartData: ChartData) -> Stock? {
+        guard let latest = chartData.quotes.first,
+              let previous = chartData.quotes.dropFirst().first else {
+            return nil
+        }
+
+        let changePercent = ((latest.close - previous.close) / previous.close) * 100
+
+        return Stock(
+            symbol: chartData.symbol,
+            name: stockNames[chartData.symbol] ?? chartData.symbol,
+            currentPrice: latest.close,
+            changePercent: changePercent,
+            previousClose: previous.close,
+            interpretation: generateInterpretation(for: chartData.symbol, changePercent: changePercent)
+        )
+    }
+
+    private func createStockFromCache(_ chartData: ChartData) -> Stock? {
+        return createStockFromChartData(chartData)
+    }
+
+    // MARK: - Chart Data Cache Management
+
+    private let chartCachePrefix = "chartData_"
+
+    func loadCachedChartData(symbol: String) -> ChartData? {
+        guard let data = UserDefaults.standard.data(forKey: chartCachePrefix + symbol) else {
+            return nil
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            let chartData = try decoder.decode(ChartData.self, from: data)
+            return chartData
+        } catch {
+            print("❌ Failed to decode chart cache for \(symbol): \(error)")
+            return nil
+        }
+    }
+
+    func cacheChartData(_ chartData: ChartData) {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(chartData)
+            UserDefaults.standard.set(data, forKey: chartCachePrefix + chartData.symbol)
+            print("✅ Cached chart data for \(chartData.symbol)")
+        } catch {
+            print("❌ Failed to cache chart data: \(error)")
+        }
+    }
+
+    // MARK: - Legacy Method (제거 예정)
 
     private func fetchSingleStock(symbol: String) async throws -> Stock? {
         let urlString = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=\(symbol)&apikey=\(apiKey)"
