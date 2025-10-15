@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Charts
 
 struct StockChartView: View {
     let symbol: String
@@ -31,7 +30,7 @@ struct StockChartView: View {
         }
     }
 
-    // MARK: - Chart View
+    // MARK: - Custom Chart View (iOS 15 Compatible)
 
     private func chartView(data: [DailyQuote]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -39,52 +38,10 @@ struct StockChartView: View {
                 .font(.headline)
                 .padding(.horizontal)
 
-            Chart {
-                ForEach(data) { quote in
-                    LineMark(
-                        x: .value("날짜", quote.date),
-                        y: .value("종가", quote.close)
-                    )
-                    .foregroundStyle(Color.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-
-                    AreaMark(
-                        x: .value("날짜", quote.date),
-                        y: .value("종가", quote.close)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color.blue.opacity(0.3), Color.blue.opacity(0.0)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .day, count: 7)) { value in
-                    if let date = value.as(Date.self) {
-                        AxisValueLabel {
-                            Text(date, format: .dateTime.month().day())
-                                .font(.caption)
-                        }
-                        AxisGridLine()
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .trailing) { value in
-                    if let price = value.as(Double.self) {
-                        AxisValueLabel {
-                            Text("$\(Int(price))")
-                                .font(.caption)
-                        }
-                        AxisGridLine()
-                    }
-                }
-            }
-            .frame(height: 250)
-            .padding(.horizontal)
+            // Custom Line Chart
+            CustomLineChart(quotes: data)
+                .frame(height: 250)
+                .padding(.horizontal)
 
             // 통계 정보
             if let latest = data.first, let oldest = data.last {
@@ -154,6 +111,86 @@ struct StockChartView: View {
         }
 
         isLoading = false
+    }
+}
+
+// MARK: - Custom Line Chart (iOS 15 Compatible)
+
+struct CustomLineChart: View {
+    let quotes: [DailyQuote]
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+
+            // 가격 데이터
+            let prices = quotes.map(\.close)
+            let maxPrice = prices.max() ?? 1
+            let minPrice = prices.min() ?? 0
+            let priceRange = maxPrice - minPrice
+
+            ZStack(alignment: .topLeading) {
+                // 배경 그리드 (수평선 5개)
+                ForEach(0..<5) { i in
+                    let y = height * CGFloat(i) / 4
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: width, y: y))
+                    }
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                }
+
+                // 차트 영역 (그라디언트)
+                Path { path in
+                    guard !quotes.isEmpty else { return }
+
+                    let stepX = width / CGFloat(quotes.count - 1)
+
+                    // 시작점 (왼쪽 하단)
+                    path.move(to: CGPoint(x: 0, y: height))
+
+                    // 데이터 포인트들
+                    for (index, quote) in quotes.enumerated().reversed() {
+                        let x = CGFloat(quotes.count - 1 - index) * stepX
+                        let normalizedPrice = (quote.close - minPrice) / priceRange
+                        let y = height - (normalizedPrice * height)
+                        path.addLine(to: CGPoint(x: x, y: y))
+                    }
+
+                    // 오른쪽 하단으로 닫기
+                    path.addLine(to: CGPoint(x: width, y: height))
+                    path.closeSubpath()
+                }
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.3), Color.blue.opacity(0.05)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                // 라인 차트
+                Path { path in
+                    guard !quotes.isEmpty else { return }
+
+                    let stepX = width / CGFloat(quotes.count - 1)
+
+                    for (index, quote) in quotes.enumerated().reversed() {
+                        let x = CGFloat(quotes.count - 1 - index) * stepX
+                        let normalizedPrice = (quote.close - minPrice) / priceRange
+                        let y = height - (normalizedPrice * height)
+
+                        if index == quotes.count - 1 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(Color.blue, lineWidth: 2)
+            }
+        }
     }
 }
 
