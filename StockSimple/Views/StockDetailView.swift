@@ -20,9 +20,8 @@ struct StockDetailView: View {
 
             // 탭 선택기
             Picker("", selection: $selectedTab) {
-                Text("📈 차트").tag(0)
-                Text("📊 분석").tag(1)
-                Text("💰 시뮬레이터").tag(2)
+                Text("차트").tag(0)
+                Text("구간 분석").tag(1)
             }
             .pickerStyle(.segmented)
             .padding()
@@ -34,8 +33,6 @@ struct StockDetailView: View {
                     chartTabContent
                 case 1:
                     analysisTabContent
-                case 2:
-                    simulatorTabContent
                 default:
                     EmptyView()
                 }
@@ -66,7 +63,7 @@ struct StockDetailView: View {
     private var analysisTabContent: some View {
         VStack(spacing: 16) {
             if analysisSections.isEmpty {
-                Text("구간 분석 중...")
+                ProgressView("구간 분석 중...")
                     .foregroundColor(.secondary)
                     .padding()
             } else {
@@ -78,53 +75,50 @@ struct StockDetailView: View {
         .padding()
     }
 
-    // MARK: - Simulator Tab
-
-    private var simulatorTabContent: some View {
-        VStack(spacing: 16) {
-            // 초보자 해석
-            interpretationSection
-
-            // 투자 시뮬레이터
-            investmentSimulator
-        }
-        .padding()
-    }
-
-    // MARK: - Analysis Section Card
+    // MARK: - Analysis Section Card (Professional Design)
 
     private func analysisSectionCard(_ section: AnalysisSection) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            // 헤더: 구간 타입 + 기간
             HStack {
-                Text(section.emoji)
-                    .font(.system(size: 32))
-
                 VStack(alignment: .leading, spacing: 4) {
                     Text(sectionTypeText(section.type))
-                        .font(.headline)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.primary)
 
-                    Text("\(dateFormatter.string(from: section.startDate)) ~ \(dateFormatter.string(from: section.endDate))")
-                        .font(.caption)
+                    Text("\(dateFormatter.string(from: section.startDate)) - \(dateFormatter.string(from: section.endDate))")
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
 
                 Spacer()
 
-                Text(String(format: "%+.1f%%", section.changePercent))
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(section.changePercent > 0 ? .green : .red)
+                // 변동률 (강조)
+                Text(String(format: "%+.2f%%", section.changePercent))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(section.changePercent > 0 ? Color.green : Color.red)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(section.changePercent > 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                    )
             }
 
+            Divider()
+
+            // 전문가 분석
             Text(section.explanation)
-                .font(.body)
+                .font(.system(size: 14))
                 .foregroundColor(.primary)
                 .lineSpacing(6)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding()
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(Color(UIColor.secondarySystemBackground))
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
     }
 
@@ -132,8 +126,9 @@ struct StockDetailView: View {
         switch type {
         case .surge: return "급등 구간"
         case .crash: return "급락 구간"
-        case .range: return "박스권 구간"
+        case .range: return "횡보 구간"
         case .breakout: return "돌파 구간"
+        case .consolidation: return "조정 구간"
         }
     }
 
@@ -168,117 +163,52 @@ struct StockDetailView: View {
         analysisSections = analyzer.analyze(quotes: data.last30Days)
     }
 
-    // MARK: - Header Section
+    // MARK: - Header Section (Professional Design)
 
     private var headerSection: some View {
-        VStack(spacing: 12) {
-            Text(stock.emoji)
-                .font(.system(size: 80))
-
+        VStack(spacing: 8) {
             Text(stock.name)
-                .font(.title2)
-                .fontWeight(.bold)
-
-            Text(stock.symbol)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-    }
-
-    // MARK: - Price Section
-
-    private var priceSection: some View {
-        VStack(spacing: 16) {
-            Text(stock.formattedPrice)
-                .font(.system(size: 48, weight: .bold))
+                .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.primary)
 
+            Text(stock.symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - Price Section (Professional Design)
+
+    private var priceSection: some View {
+        VStack(spacing: 12) {
+            // 현재 가격 (대형, 강조)
+            Text(stock.formattedPrice)
+                .font(.system(size: 48, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+
+            // 등락률 (세련된 배지 스타일)
             HStack(spacing: 8) {
-                Image(systemName: stock.isUp ? "arrowtriangle.up.fill" : stock.isDown ? "arrowtriangle.down.fill" : "minus")
-                    .font(.title3)
+                Image(systemName: stock.isUp ? "arrow.up.right" : stock.isDown ? "arrow.down.right" : "minus")
+                    .font(.system(size: 16, weight: .bold))
 
                 Text(stock.formattedChangePercent)
-                    .font(.title3)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
             }
-            .foregroundColor(stock.changeColor)
+            .foregroundColor(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(stock.changeColor)
+            )
         }
-        .padding()
+        .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(stock.changeColor.opacity(0.1))
-        )
-    }
-
-    // MARK: - Interpretation Section
-
-    private var interpretationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("💡 초보자를 위한 해석")
-                .font(.headline)
-                .foregroundColor(.primary)
-
-            Text(stock.interpretation)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .lineSpacing(6)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
                 .fill(Color(UIColor.secondarySystemBackground))
-        )
-    }
-
-    // MARK: - Investment Simulator
-
-    private var investmentSimulator: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("💰 100만원 투자 시뮬레이터")
-                .font(.headline)
-                .foregroundColor(.primary)
-
-            VStack(spacing: 12) {
-                HStack {
-                    Text("투자금액")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("1,000,000원")
-                        .fontWeight(.semibold)
-                }
-
-                Divider()
-
-                HStack {
-                    Text("현재 가치")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(stock.formattedInvestment + "원")
-                        .fontWeight(.bold)
-                        .foregroundColor(stock.changeColor)
-                }
-
-                Divider()
-
-                HStack {
-                    Text("손익")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    let profit = stock.investmentValue - 1_000_000
-                    Text(String(format: "%+.0f원", profit))
-                        .fontWeight(.bold)
-                        .foregroundColor(stock.changeColor)
-                }
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.secondarySystemBackground))
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
         )
     }
 }

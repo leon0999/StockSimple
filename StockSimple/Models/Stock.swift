@@ -28,11 +28,7 @@ struct Stock: Identifiable, Codable {
         self.interpretation = interpretation
     }
 
-    // MARK: - Computed Properties
-
-    var emoji: String {
-        calculateEmoji(changePercent: changePercent)
-    }
+    // MARK: - Computed Properties (Professional)
 
     var formattedPrice: String {
         String(format: "$%.2f", currentPrice)
@@ -43,44 +39,34 @@ struct Stock: Identifiable, Codable {
     }
 
     var changeColor: Color {
-        switch changePercent {
-        case 3...:        return .red      // 급등
-        case 0.5..<3:     return .green    // 상승
-        case -0.5..<0.5:  return .gray     // 보합
-        case -3..<(-0.5): return .orange   // 하락
-        default:          return .purple   // 급락
+        if changePercent > 0 {
+            return Color.green
+        } else if changePercent < 0 {
+            return Color.red
+        } else {
+            return Color.gray
         }
     }
 
     var isUp: Bool {
-        changePercent > 0.5
+        changePercent > 0
     }
 
     var isDown: Bool {
-        changePercent < -0.5
+        changePercent < 0
     }
 
-    // 100만원 투자 시 가치
-    var investmentValue: Double {
-        1_000_000 * (1 + changePercent / 100)
-    }
-
-    var formattedInvestment: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: investmentValue)) ?? "1,000,000"
-    }
-
-    // MARK: - Emotion Emoji Calculator
-
-    private func calculateEmoji(changePercent: Double) -> String {
-        switch changePercent {
-        case 3...:        return "📈"  // 급등 (3% 이상)
-        case 0.5..<3:     return "😊"  // 상승 (0.5~3%)
-        case -0.5..<0.5:  return "😐"  // 보합 (-0.5~0.5%)
-        case -3..<(-0.5): return "😰"  // 하락 (-3~-0.5%)
-        default:          return "🆘"  // 급락 (-3% 이하)
+    // 추세 강도 (전문가 지표)
+    var trendStrength: String {
+        let absChange = abs(changePercent)
+        if absChange > 7.0 {
+            return "매우 강함"
+        } else if absChange > 3.0 {
+            return "강함"
+        } else if absChange > 1.0 {
+            return "보통"
+        } else {
+            return "약함"
         }
     }
 }
