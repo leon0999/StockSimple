@@ -38,39 +38,29 @@ class StockService {
         "QQQ": "NASDAQ-100 ETF"
     ]
 
-    // MARK: - Fetch Stocks (실제 Yahoo Finance API)
+    // MARK: - Fetch Stocks (Alpha Vantage API - 무료 500 requests/day)
+
+    private let apiKey = "demo" // MVP용 - 실제 키 발급: https://www.alphavantage.co/support/#api-key
 
     func fetchStocks() async throws -> [Stock] {
-        // 모든 주식 병렬로 가져오기
-        return try await withThrowingTaskGroup(of: Stock?.self) { group in
-            for symbol in stockSymbols {
-                group.addTask {
-                    try await self.fetchSingleStock(symbol: symbol)
-                }
-            }
+        // Alpha Vantage는 Rate Limit이 있으므로 순차 처리 (5 calls/minute)
+        var stocks: [Stock] = []
 
-            var stocks: [Stock] = []
-            for try await stock in group {
-                if let stock = stock {
-                    stocks.append(stock)
-                }
+        for symbol in stockSymbols {
+            if let stock = try await fetchSingleStock(symbol: symbol) {
+                stocks.append(stock)
             }
-
-            // 심볼 순서대로 정렬
-            return stocks.sorted { stock1, stock2 in
-                guard let index1 = stockSymbols.firstIndex(of: stock1.symbol),
-                      let index2 = stockSymbols.firstIndex(of: stock2.symbol) else {
-                    return false
-                }
-                return index1 < index2
-            }
+            // Rate Limit 방지: 0.3초 대기
+            try await Task.sleep(nanoseconds: 300_000_000)
         }
+
+        return stocks
     }
 
     // MARK: - Fetch Single Stock
 
     private func fetchSingleStock(symbol: String) async throws -> Stock? {
-        let urlString = "https://query1.finance.yahoo.com/v8/finance/chart/\(symbol)?interval=1d&range=5d"
+        let urlString = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=\(symbol)&apikey=\(apiKey)"
 
         guard let url = URL(string: urlString) else {
             print("❌ Invalid URL for \(symbol)")
@@ -87,17 +77,20 @@ class StockService {
             }
 
             let decoder = JSONDecoder()
-            let result = try decoder.decode(YahooFinanceResponse.self, from: data)
+            let result = try decoder.decode(AlphaVantageResponse.self, from: data)
 
-            guard let quote = result.chart.result.first,
-                  let meta = quote.meta,
-                  let currentPrice = meta.regularMarketPrice,
-                  let previousClose = meta.previousClose else {
+            guard let quote = result.globalQuote,
+                  let priceString = quote.price,
+                  let currentPrice = Double(priceString),
+                  let previousCloseString = quote.previousClose,
+                  let previousClose = Double(previousCloseString) else {
                 print("❌ Missing data for \(symbol)")
                 return nil
             }
 
             let changePercent = ((currentPrice - previousClose) / previousClose) * 100
+
+            print("✅ Loaded \(symbol): $\(currentPrice)")
 
             return Stock(
                 symbol: symbol,

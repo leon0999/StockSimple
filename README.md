@@ -68,15 +68,27 @@ Xcode에서 Target → Info 탭에서 다음 설정 추가:
 
 ## 📊 API 사용량
 
-### Yahoo Finance API
+### Alpha Vantage API
 - **비용**: 무료
-- **Rate Limit**: 제한 없음 (합리적 사용)
-- **엔드포인트**: `https://query1.finance.yahoo.com/v8/finance/chart/{SYMBOL}`
+- **Rate Limit**:
+  - 일일 500 requests
+  - 분당 5 requests
+- **API 키**: `demo` (MVP용) 또는 무료 발급
+- **엔드포인트**: `https://www.alphavantage.co/query?function=GLOBAL_QUOTE`
 
 ### 데이터 갱신 주기
-- 앱 실행 시: 즉시
+- 앱 실행 시: 즉시 (15개 주식 순차 로딩, ~5초)
 - 자동 갱신: 30초마다
 - 수동 갱신: Pull to refresh
+- Rate Limit 방지: 각 요청 사이 0.3초 대기
+
+### API 키 발급 (선택)
+1. https://www.alphavantage.co/support/#api-key 방문
+2. 무료 API 키 발급 (이메일 입력)
+3. `StockService.swift`에서 `apiKey` 변경
+```swift
+private let apiKey = "YOUR_API_KEY_HERE"
+```
 
 ## 🔐 개인정보 보호
 
@@ -102,13 +114,17 @@ Product → Archive
 
 ## 🐛 알려진 이슈
 
-### 네트워크 에러 처리
-- 일부 주식 데이터 로드 실패 시 빈 리스트 표시
-- 해결: 캐시된 데이터 표시로 대응
+### Rate Limit 관리
+- Alpha Vantage 무료 플랜: 일 500회, 분당 5회
+- 해결: 각 요청 사이 0.3초 대기, 캐싱 시스템
 
-### Yahoo Finance API 안정성
-- 가끔 일부 심볼 데이터가 누락될 수 있음
-- 해결: nil 체크 및 에러 핸들링
+### API 키 제한
+- `demo` 키는 제한된 심볼만 지원
+- 해결: 무료 API 키 발급 (https://www.alphavantage.co/support/#api-key)
+
+### 로딩 시간
+- 15개 주식 순차 로딩: ~5초
+- 해결: 캐시 데이터로 즉시 표시 → 백그라운드 업데이트
 
 ## 📄 라이선스
 
