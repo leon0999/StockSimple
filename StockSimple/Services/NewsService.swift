@@ -27,12 +27,13 @@ class NewsService {
         let fromDateString = dateFormatter.string(from: fromDate)
 
         // NewsAPI.org endpoint
+        let encodedCompanyName = companyName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://newsapi.org/v2/everything?" +
-                       "q=\(companyName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&" +
+                       "q=\(encodedCompanyName)&" +
                        "from=\(fromDateString)&" +
                        "sortBy=publishedAt&" +
                        "language=en&" +
-                       "apiKey=\(newsAPIKey)"
+                       "apiKey=9fd535fdba8d476fb1d2d83e077a377d"
 
         guard let url = URL(string: urlString) else {
             print("❌ Invalid URL for news")
