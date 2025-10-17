@@ -252,8 +252,14 @@ class SectionAnalyzer {
     private func findRelatedNews(for quotes: [DailyQuote], in allNews: [NewsArticle], sentiment: NewsSentiment?) -> [NewsArticle] {
         guard let startDate = quotes.last?.date,
               let endDate = quotes.first?.date else {
+            print("❌ Invalid date range for news matching")
             return []
         }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MM/dd"
+        print("🔍 Finding news for period: \(dateFormatter.string(from: startDate)) - \(dateFormatter.string(from: endDate))")
+        print("📊 Total news available: \(allNews.count)")
 
         // 구간 날짜 범위 내 뉴스 필터링
         let filtered = allNews.filter { article in
@@ -263,12 +269,26 @@ class SectionAnalyzer {
             // Sentiment 매칭 (옵션)
             let sentimentMatch = sentiment == nil || article.sentiment == sentiment
 
+            if isInRange && sentimentMatch {
+                print("✅ Match: [\(dateFormatter.string(from: articleDate))] \(article.title)")
+            }
+
             return isInRange && sentimentMatch
         }
 
+        print("📰 Found \(filtered.count) matching news articles")
+
         // Relevance 점수순 정렬, 상위 3개만
         let sorted = filtered.sorted { $0.relevanceScore > $1.relevanceScore }
-        return Array(sorted.prefix(3))
+        let result = Array(sorted.prefix(3))
+
+        if result.isEmpty {
+            print("⚠️ No news articles matched for this period")
+        } else {
+            print("✨ Returning top \(result.count) articles")
+        }
+
+        return result
     }
 
     // MARK: - Section Creators

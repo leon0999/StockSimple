@@ -181,11 +181,21 @@ struct StockDetailView: View {
         }
 
         // 2. 뉴스 데이터 로드 (🔥 핵심!)
+        print("📱 Starting news fetch for \(stock.symbol)...")
         do {
             newsArticles = try await NewsService.shared.fetchNews(for: stock.symbol, days: 30)
-            print("✅ Loaded \(newsArticles.count) news articles")
+            print("✅ StockDetailView: Loaded \(newsArticles.count) news articles for \(stock.symbol)")
+
+            if newsArticles.isEmpty {
+                print("⚠️ No news articles returned - check API key and network")
+            } else {
+                for (index, article) in newsArticles.prefix(3).enumerated() {
+                    print("  \(index + 1). [\(article.sentiment.emoji)] \(article.title)")
+                }
+            }
         } catch {
             print("❌ Failed to load news: \(error)")
+            print("   Error details: \(error.localizedDescription)")
         }
 
         // 3. 뉴스 기반 섹션 분석
